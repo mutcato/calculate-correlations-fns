@@ -1,11 +1,13 @@
 import boto3
 import pandas as pd
+from botocore.config import Config
 
 
 class Table:
     def __init__(self, table_name):
         self.resource = boto3.resource(
-            "dynamodb"
+            "dynamodb",
+            config=Config(read_timeout=585, connect_timeout=585)
         )
         self.table_name = table_name
 
@@ -39,8 +41,9 @@ class Item(Table):
 
     def convert_to_dataframe(self):
         prepared_item = self.prepare_for_dataframe()
+        closes_float = pd.to_numeric(pd.Series(prepared_item["closes"], index=prepared_item["timestamps"]), downcast="float")
         d = {
-            prepared_item["ticker"]: pd.Series(prepared_item["closes"], index=prepared_item["timestamps"])
+            prepared_item["ticker"]: closes_float
         }
         return pd.DataFrame(d)
 
@@ -58,8 +61,8 @@ class DataFrameTable:
             sort_key = {"name": "interval_metric", "value": f"{interval}_{metric}"}
             item = Item(partition_key, sort_key)
             items_as_df.append(item.convert_to_dataframe())
-            if index == 6:
-                break
+            # if index == 6:
+            #     break
 
         return items_as_df
 
