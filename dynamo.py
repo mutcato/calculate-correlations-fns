@@ -28,11 +28,28 @@ class Item(Table):
                 self.sort_key["name"]: self.sort_key["value"],
             }
         )
+
+        truncated_metrics = self.remove_duplicates(response["Item"]["metric_values"])
+        
         return {
-            response["Item"][self.partition_key["name"]]: response["Item"][
-                "metric_values"
-            ]
+            response["Item"][self.partition_key["name"]]: truncated_metrics
         }
+
+    @staticmethod
+    def remove_duplicates(list_of_dicts:list)->list:
+        """
+        Removes metrics recorded with the same timestamp for the same ticker
+        Params: List of dicts
+        Return: List of dicts
+        """
+        seen = set()
+        new = []
+        for d in list_of_dicts:
+            t = tuple(d.items())
+            if t not in seen:
+                seen.add(t)
+                new.append(d)
+        return new
 
     def prepare_for_dataframe(self):
         ticker = list(self.data.keys())[0]
