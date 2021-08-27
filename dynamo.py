@@ -60,6 +60,7 @@ class DataFrameTable:
     def __init__(self, interval: str = "5m", metric: str = "close"):
         self.interval = interval
         self.metric = metric
+        self.columns_to_drop = ["BUSDT_USDT", "USDC_USDT", "DAI_USDT"]
         self.table = self._build(interval, metric)
         self.row_number = self.table.shape[0]
         self.column_number = self.table.shape[1]
@@ -67,50 +68,57 @@ class DataFrameTable:
 
     def _get_all_items(self, interval, metric):
         summary = Summary()
-        self.filtered_tickers = summary.filter_tickers(interval, metric)
+        filtered_tickers = summary.filter_tickers(interval, metric)
         items_as_df = []
-        for index, ticker in enumerate(self.filtered_tickers):
+        for index, ticker in enumerate(filtered_tickers):
             partition_key = {"name": "ticker", "value": ticker}
             sort_key = {"name": "interval_metric", "value": f"{interval}_{metric}"}
             item = Item(partition_key, sort_key)
             items_as_df.append(item.convert_to_dataframe())
-            # if index == 6:
-            #     break
+            if index == 6:
+                break
 
         return items_as_df
 
     def _build(self, interval, metric):
         dataframes = self._get_all_items(interval, metric)
-        return pd.concat(dataframes, axis=1)
+        result_dataframe = pd.concat(dataframes, axis=1)
+        result_dataframe.drop(self.columns_to_drop, axis = 1, inplace = True, errors="ignore")
+        return result_dataframe
 
-    def calculate_correlations(self)->dict:
+    def _calculate_correlation(self, master_ticker, slave_ticker)->dict:
+        temp_dataframe = self.table[[master_ticker, slave_ticker]]
+        temp_dataframe = temp_dataframe.dropna()
+        try:
+            correlation = {
+                "pair": f"{master_ticker}-{slave_ticker}",
+                "interval": self.interval,
+                "metric": self.metric,
+                "pearson_corr": temp_dataframe[master_ticker].corr(
+                    temp_dataframe[slave_ticker]
+                ),
+                "spearman_corr": temp_dataframe[master_ticker].corr(
+                    temp_dataframe[slave_ticker], method="spearman"
+                ),
+                "kendall_corr": temp_dataframe[master_ticker].corr(
+                    temp_dataframe[slave_ticker], method="kendall"
+                ),
+                "time": int(time()),
+            }
+        except Exception as e:
+            # To-do: Add logger
+            print(e)
+
+        return correlation
+
+    def calculate_correlations(self)->list:
         tickers = self.headers
         correlations = []
         i = 0
         while i < len(tickers):
             master_ticker = tickers.pop(i)
             for slave_ticker in tickers:
-                try:
-                    correlations.append(
-                        {
-                            "pair": f"{master_ticker}-{slave_ticker}",
-                            "interval": self.interval,
-                            "metric": self.metric,
-                            "pearson_corr": self.table[master_ticker].corr(
-                                self.table[slave_ticker]
-                            ),
-                            "spearman_corr": self.table[master_ticker].corr(
-                                self.table[slave_ticker], method="spearman"
-                            ),
-                            "kendall_corr": self.table[master_ticker].corr(
-                                self.table[slave_ticker], method="kendall"
-                            ),
-                            "time": int(time()),
-                        }
-                    )
-                except Exception as e:
-                    # To-do: Add logger
-                    print(e)
+                correlations.append(self._calculate_correlation(master_ticker, slave_ticker))
 
         return correlations
 
