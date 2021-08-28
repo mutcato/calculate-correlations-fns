@@ -163,3 +163,11 @@ class Summary(Table):
         ]
 
         return filtered_tickers
+
+
+def lambda_handler(event, context):
+    # df = DataFrameTable()
+    # correlations = df.calculate_correlations()
+    # sorted = df.sort_correlations(correlations)
+    print("fooooo")
+    return {"RETURN": "hoooo"}
