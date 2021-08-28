@@ -92,7 +92,7 @@ class DataFrameTable:
             sort_key = {"name": "interval_metric", "value": f"{interval}_{metric}"}
             item = Item(partition_key, sort_key)
             items_as_df.append(item.convert_to_dataframe())
-            if index == 6:
+            if index == 2:
                 break
 
         return items_as_df
