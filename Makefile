@@ -31,9 +31,18 @@ deploy:
 	# Creates a zip file considering .gitignore with last commited changes
 	git archive HEAD -o lambda_deploy.zip 
 
+	# Get in packages directory and add packages into zip file. Then changes current directory
+	cd venv/lib/python3.8/site-packages/ && zip -ur ../../../../lambda_deploy.zip . -x "boto*" -x "black*" -x "pip*" -x "__*__" && cd -
+
+	# Remove existing s3 file
+	aws s3 rm s3://$(bucket_name)/lambda_deploy.zip
+
+	# Uploads the zip file into S3 bucket
+	aws s3 mv lambda_deploy.zip s3://$(bucket_name)
+
 	aws lambda update-function-code \
 	--function-name $(lambda_name) \
-	--s3-bucket calculate-correlations-fns \
+	--s3-bucket $(bucket_name) \
 	--s3-key lambda_deploy.zip
 
 	rm lambda_deploy.zip
