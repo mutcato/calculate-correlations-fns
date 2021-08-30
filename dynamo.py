@@ -1,7 +1,10 @@
+from datetime import date
+from decimal import Decimal
+from time import time
+
 import boto3
 import pandas as pd
 from botocore.config import Config
-from time import time
 
 
 class Table:
@@ -30,13 +33,11 @@ class Item(Table):
         )
 
         truncated_metrics = self.remove_duplicates(response["Item"]["metric_values"])
-        
-        return {
-            response["Item"][self.partition_key["name"]]: truncated_metrics
-        }
+
+        return {response["Item"][self.partition_key["name"]]: truncated_metrics}
 
     @staticmethod
-    def remove_duplicates(list_of_dicts:list)->list:
+    def remove_duplicates(list_of_dicts: list) -> list:
         """
         Removes metrics recorded with the same timestamp for the same ticker
         Params: List of dicts
@@ -74,36 +75,45 @@ class Item(Table):
 
 
 class DataFrameTable:
-    def __init__(self, interval: str = "5m", metric: str = "close"):
+    def __init__(
+        self,
+        tickers: list = ["BTC_USDT", "ETH_USDT"],
+        interval: str = "5m",
+        metric: str = "close",
+    ):
+        self.tickers = tickers
         self.interval = interval
         self.metric = metric
         self.columns_to_drop = ["BUSDT_USDT", "USDC_USDT", "DAI_USDT"]
-        self.table = self._build(interval, metric)
+        self.table = self._build()
         self.row_number = self.table.shape[0]
         self.column_number = self.table.shape[1]
         self.headers = list(self.table.columns)
 
-    def _get_all_items(self, interval, metric):
-        summary = Summary()
-        filtered_tickers = summary.filter_tickers(interval, metric)
+    def _get_all_items(self):
         items_as_df = []
-        for index, ticker in enumerate(filtered_tickers):
+        for index, ticker in enumerate(self.tickers):
             partition_key = {"name": "ticker", "value": ticker}
-            sort_key = {"name": "interval_metric", "value": f"{interval}_{metric}"}
+            sort_key = {
+                "name": "interval_metric",
+                "value": f"{self.interval}_{self.metric}",
+            }
             item = Item(partition_key, sort_key)
             items_as_df.append(item.convert_to_dataframe())
-            if index == 2:
-                break
+            # if index == 5:
+            #     break
 
         return items_as_df
 
-    def _build(self, interval, metric):
-        dataframes = self._get_all_items(interval, metric)
+    def _build(self):
+        dataframes = self._get_all_items()
         result_dataframe = pd.concat(dataframes, axis=1)
-        result_dataframe.drop(self.columns_to_drop, axis = 1, inplace = True, errors="ignore")
+        result_dataframe.drop(
+            self.columns_to_drop, axis=1, inplace=True, errors="ignore"
+        )
         return result_dataframe
 
-    def _calculate_correlation(self, master_ticker, slave_ticker)->dict:
+    def _calculate_correlation(self, master_ticker, slave_ticker) -> dict:
         temp_dataframe = self.table[[master_ticker, slave_ticker]]
         temp_dataframe = temp_dataframe.dropna()
         try:
@@ -111,14 +121,24 @@ class DataFrameTable:
                 "pair": f"{master_ticker}-{slave_ticker}",
                 "interval": self.interval,
                 "metric": self.metric,
-                "pearson_corr": temp_dataframe[master_ticker].corr(
-                    temp_dataframe[slave_ticker]
+                "pearson_corr": Decimal(
+                    str(
+                        temp_dataframe[master_ticker].corr(temp_dataframe[slave_ticker])
+                    )
                 ),
-                "spearman_corr": temp_dataframe[master_ticker].corr(
-                    temp_dataframe[slave_ticker], method="spearman"
+                "spearman_corr": Decimal(
+                    str(
+                        temp_dataframe[master_ticker].corr(
+                            temp_dataframe[slave_ticker], method="spearman"
+                        )
+                    )
                 ),
-                "kendall_corr": temp_dataframe[master_ticker].corr(
-                    temp_dataframe[slave_ticker], method="kendall"
+                "kendall_corr": Decimal(
+                    str(
+                        temp_dataframe[master_ticker].corr(
+                            temp_dataframe[slave_ticker], method="kendall"
+                        )
+                    )
                 ),
                 "time": int(time()),
             }
@@ -128,14 +148,16 @@ class DataFrameTable:
 
         return correlation
 
-    def calculate_correlations(self)->list:
+    def calculate_correlations(self) -> list:
         tickers = self.headers
         correlations = []
         i = 0
         while i < len(tickers):
             master_ticker = tickers.pop(i)
             for slave_ticker in tickers:
-                correlations.append(self._calculate_correlation(master_ticker, slave_ticker))
+                correlations.append(
+                    self._calculate_correlation(master_ticker, slave_ticker)
+                )
 
         return correlations
 
@@ -164,10 +186,51 @@ class Summary(Table):
 
         return filtered_tickers
 
+    def get_unique_intervals(self):
+        seen = []
+        unique_intervals = []
+        for item in self.all_items:
+            if item["interval_metric"] not in seen:
+                seen.append(item["interval_metric"])
+                unique_intervals.append(item["interval_metric"].split("_")[0])
+        return unique_intervals
+
+    @staticmethod
+    def get_unique_metrics():
+        """
+        This is only 'close' for now. Other metrics can be added later
+        For example: open, high, low, volume, number of trades
+        """
+        return ["close"]
+
+
+class CorrelationsTable(Table):
+    def __init__(self):
+        Table.__init__(self, "correlations")
+
+    def insert(self, correlations):
+        for correlation in correlations:
+            correlation["date"] = f"""{correlation["interval"]}_{correlation["metric"]}_{date.today()}"""
+            self.table.put_item(Item=correlation)
+
+
+def calculate_correlations_for_all_intervals_for_all_metrics() -> list:
+    summary = Summary()
+    intervals = summary.get_unique_intervals()
+    metrics = summary.get_unique_metrics()
+    result = []
+    for metric in metrics:
+        for interval in intervals:
+            tickers = summary.filter_tickers(interval, metric)
+            df = DataFrameTable(tickers, interval, metric)
+            correlations = df.calculate_correlations()
+            sorted = df.sort_correlations(correlations)
+            result.append(sorted)
+    flattened_result = [item for items in result for item in items]
+    return flattened_result
+
 
 def lambda_handler(event, context):
-    # df = DataFrameTable()
-    # correlations = df.calculate_correlations()
-    # sorted = df.sort_correlations(correlations)
-    print("fooooo")
-    return {"RETURN": "hoooo"}
+    correlations = calculate_correlations_for_all_intervals_for_all_metrics()
+    corr_table = CorrelationsTable()
+    corr_table.insert(correlations)
