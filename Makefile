@@ -45,7 +45,5 @@ deploy:
 	--s3-bucket $(bucket_name) \
 	--s3-key lambda_deploy.zip
 
-	rm lambda_deploy.zip
-
 run:
 	aws lambda invoke --function-name $(lambda_name) outputfile.txt
