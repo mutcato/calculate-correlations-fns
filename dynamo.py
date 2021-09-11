@@ -48,7 +48,7 @@ class DataFrameTable:
         for index, ticker in enumerate(self.tickers):
             item = Closes(ticker, self.interval)
             items_as_df.append(item.convert_to_dataframe())
-            # if index == 5:
+            # if index == 7:
             #     break
 
         return items_as_df
@@ -67,26 +67,26 @@ class DataFrameTable:
         temp_dataframe = temp_dataframe.dropna()
         try:
             correlation = {
-                "date": str(date.today()),
-                "pair": f"{master_ticker}-{slave_ticker}",
-                "interval": self.interval,
-                "metric": self.metric,
-                "master": master_ticker,
-                "slave": slave_ticker,
-                "pearson_corr": str(
+                "date":{"s":str(date.today())},
+                "pair":{"s":f"{master_ticker}-{slave_ticker}"},
+                "interval":{"s":self.interval},
+                "metric":{"s":self.metric},
+                "master": {"s":master_ticker},
+                "slave": {"s":slave_ticker},
+                "pearson_corr":{"s":str(
                     temp_dataframe[master_ticker].corr(temp_dataframe[slave_ticker])
-                ),
-                "spearman_corr": str(
+                )},
+                "spearman_corr":{"s":str(
                     temp_dataframe[master_ticker].corr(
                         temp_dataframe[slave_ticker], method="spearman"
                     )
-                ),
-                "kendall_corr": str(
+                )},
+                "kendall_corr":{"s":str(
                     temp_dataframe[master_ticker].corr(
                         temp_dataframe[slave_ticker], method="kendall"
                     )
-                ),
-                "time": int(time()),
+                )},
+                "TTL":{"n":int(time()) + 7*24*60*60},
             }
         except Exception as e:
             # To-do: Add logger
@@ -108,19 +108,25 @@ class DataFrameTable:
 
         return correlations
 
+
     @staticmethod
-    def sort_correlations(correlations, order_by="pearson_corr", reverse=True):
-        sorted_corrs = sorted(correlations, key=lambda k: k[order_by], reverse=reverse)
-        return sorted_corrs
+    def convert_string(correlations):
+        concatenated_correlations  ="\n".join([str(correlation) for correlation in correlations])
+        return concatenated_correlations
+        
 
 
-
-def write_into_s3(correlations):
+def write_into_s3(correlations, file_format:str="dynamodb_export"):
     s3 = boto3.resource('s3')
-    s3object = s3.Object('correlations-table-exports', 'your_file.json')
+    s3object = s3.Object('correlations-batch-data', f"correlations-{date.today()}.json")
+
+    if file_format == "json":
+        data = json.dumps(correlations)
+    else:
+        data = correlations
 
     s3object.put(
-        Body=(bytes(json.dumps(correlations).encode('UTF-8')))
+        Body=(bytes(data, 'utf-8'))
     )
 
 
@@ -181,12 +187,11 @@ def calculate_correlations_for_all_intervals_for_all_metrics() -> list:
             tickers = summary.filter_tickers(interval, metric)
             df = DataFrameTable(tickers, interval, metric)
             correlations = df.calculate_correlations()
-            sorted = df.sort_correlations(correlations)
-            result.append(sorted)
+            result.append(correlations)
     flattened_result = [item for items in result for item in items]
-    return flattened_result
+    concatenated_result = df.convert_string(flattened_result)
+    return concatenated_result
 
-@timeit
 def lambda_handler(event, context):
     correlations = calculate_correlations_for_all_intervals_for_all_metrics()
     write_into_s3(correlations)

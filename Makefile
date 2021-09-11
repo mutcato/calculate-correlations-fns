@@ -19,8 +19,8 @@ initial-deploy:
 	--function-name $(lambda_name)  \
 	--region eu-west-1 \
 	--runtime python3.8  \
-	--timeout 600 \
-	--memory-size 512 \
+	--timeout 900 \
+	--memory-size 10240 \
 	--role ${LAMBDA_IAM_ROLE_ARN} \
 	--handler dynamo.lambda_handler \
 	--code S3Bucket=$(bucket_name),S3Key=lambda_deploy.zip \
