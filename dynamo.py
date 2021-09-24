@@ -16,6 +16,7 @@ from timestream import Closes
 
 logger = logging.getLogger(__name__)
 
+
 class Table:
     def __init__(self, table_name):
         self.dynamodb = boto3.resource(
@@ -67,27 +68,28 @@ class DataFrameTable:
         temp_dataframe = temp_dataframe.dropna()
         try:
             correlation = {
-                "date":{"s":str(date.today())},
-                "pair":{"s":f"{master_ticker}-{slave_ticker}"},
-                "interval":{"s":self.interval},
-                "metric":{"s":self.metric},
-                "master": {"s":master_ticker},
-                "slave": {"s":slave_ticker},
-                "pearson_corr":{"s":str(
+                "date": str(date.today()),
+                "pair": f"{master_ticker}-{slave_ticker}",
+                "interval": self.interval,
+                "metric": self.metric,
+                "master": master_ticker,
+                "slave": slave_ticker,
+                "pearson_corr": str(
                     temp_dataframe[master_ticker].corr(temp_dataframe[slave_ticker])
-                )},
-                "spearman_corr":{"s":str(
+                ),
+                "spearman_corr": str(
                     temp_dataframe[master_ticker].corr(
                         temp_dataframe[slave_ticker], method="spearman"
                     )
-                )},
-                "kendall_corr":{"s":str(
+                ),
+                "kendall_corr": str(
                     temp_dataframe[master_ticker].corr(
                         temp_dataframe[slave_ticker], method="kendall"
                     )
-                )},
-                "TTL":{"n":int(time()) + 7*24*60*60},
+                ),
+                "TTL": int(time()) + 180 * 24 * 60 * 60,
             }
+
         except Exception as e:
             # To-do: Add logger
             print(e)
@@ -108,26 +110,24 @@ class DataFrameTable:
 
         return correlations
 
-
     @staticmethod
     def convert_string(correlations):
-        concatenated_correlations  ="\n".join([str(correlation) for correlation in correlations])
+        concatenated_correlations = "\n".join(
+            [str(correlation) for correlation in correlations]
+        )
         return concatenated_correlations
-        
 
 
-def write_into_s3(correlations, file_format:str="dynamodb_export"):
-    s3 = boto3.resource('s3')
-    s3object = s3.Object('correlations-batch-data', f"correlations-{date.today()}.json")
+def write_into_s3(correlations, file_format: str = "dynamodb_export"):
+    s3 = boto3.resource("s3")
+    s3object = s3.Object("correlations-batch-data", f"correlations.json")
 
     if file_format == "json":
         data = json.dumps(correlations)
     else:
         data = correlations
 
-    s3object.put(
-        Body=(bytes(data, 'utf-8'))
-    )
+    s3object.put(Body=(bytes(data, "utf-8")))
 
 
 class Summary(Table):
@@ -189,11 +189,15 @@ def calculate_correlations_for_all_intervals_for_all_metrics() -> list:
             correlations = df.calculate_correlations()
             result.append(correlations)
     flattened_result = [item for items in result for item in items]
-    concatenated_result = df.convert_string(flattened_result)
-    return concatenated_result
+    if convert_to_str:
+        return df.convert_string(flattened_result)
+    return flattened_result
+
 
 def lambda_handler(event, context):
-    correlations = calculate_correlations_for_all_intervals_for_all_metrics()
-    write_into_s3(correlations)
+    correlations = calculate_correlations_for_all_intervals_for_all_metrics(
+        convert_to_str=False
+    )
+    write_into_s3(correlations, file_format="json")
     # corr_table = CorrelationsTable()
     # corr_table.insert(correlations)
