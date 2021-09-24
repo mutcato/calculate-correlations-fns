@@ -165,19 +165,11 @@ class Summary(Table):
         return ["close"]
 
 
-class CorrelationsTable(Table):
-    def __init__(self):
-        Table.__init__(self, "correlations")
-
-    @timeit
-    def insert(self, correlations):
-        for correlation in correlations:
-            correlation["date"] = f"""{correlation["interval"]}_{correlation["metric"]}_{date.today()}"""
-            correlation["TTL"] = int(datetime.now().timestamp()) + 30*24*60*60
-            self.table.put_item(Item=correlation)
 
 @timeit
-def calculate_correlations_for_all_intervals_for_all_metrics() -> list:
+def calculate_correlations_for_all_intervals_for_all_metrics(
+    convert_to_str: bool = False,
+) -> list:
     summary = Summary()
     intervals = summary.get_unique_intervals()
     metrics = summary.get_unique_metrics()
@@ -199,5 +191,3 @@ def lambda_handler(event, context):
         convert_to_str=False
     )
     write_into_s3(correlations, file_format="json")
-    # corr_table = CorrelationsTable()
-    # corr_table.insert(correlations)
