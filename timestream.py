@@ -1,5 +1,4 @@
-from decimal import Decimal
-import boto3
+from typing import List
 import pandas as pd
 import awswrangler as wr
 import settings

@@ -10,8 +10,6 @@ from botocore.config import Config
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
-import pandas as pd
-
 from helpers import timeit
 from timestream import ClosesDataFrame
 
@@ -28,6 +26,7 @@ class Table:
 
         self.table = self.dynamodb.Table(self.table_name)
 
+
 class Summary(Table):
     def __init__(self):
         Table.__init__(self, "metrics_summary")
@@ -41,14 +40,15 @@ class Summary(Table):
     @timeit
     def filter_tickers(self, interval, metric) -> List[dict]:
         # Sorts list according to 'volume_in_usdt' field in decreasing order
-        sorted_items = sorted(self.all_items, key = lambda item: item["volume_in_usdt"], reverse=True)
+        sorted_items = sorted(
+            self.all_items, key=lambda item: item["volume_in_usdt"], reverse=True
+        )
 
         filtered_tickers = [
             item["ticker"]
             for item in sorted_items
             if item["interval_metric"] == f"{interval}_{metric}"
         ]
-
 
         # Return only high volume coins/tokens
         return filtered_tickers[:200]
@@ -147,6 +147,7 @@ class Correlations:
         )
         return concatenated_correlations
 
+
 @timeit
 def write_into_s3(correlations, file_format: str = "dynamodb_export"):
     s3 = boto3.resource("s3")
@@ -158,7 +159,6 @@ def write_into_s3(correlations, file_format: str = "dynamodb_export"):
         data = correlations
 
     s3object.put(Body=(bytes(data, "utf-8")))
-
 
 
 @timeit
