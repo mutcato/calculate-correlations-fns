@@ -1,17 +1,14 @@
 from decimal import Decimal
 import boto3
 import pandas as pd
+import awswrangler as wr
 import settings
 
 
 logger = settings.logging.getLogger()
 
 
-class Closes:
-    write_client = boto3.client("timestream-write")
-    query_client = boto3.client("timestream-query")
-
-    insertion_limit = 100  # you can insert this many records at once
+class ClosesDataFrame:
     time_periods_for_each_interval = {
         "5m": "30d",
         "15m": "90d",
@@ -19,30 +16,29 @@ class Closes:
         "4h": "720d",
         "1d": "1440d",
     }
+    columns_to_drop = ["BUSD_USDT", "USDC_USDT", "DAI_USDT"]
 
-    def __init__(self, ticker: str = "BTC_USDT", interval: str = "5m"):
+    def __init__(self, tickers: list = ["BTC_USDT", "ETH_USDT"], interval: str = "5m"):
         self.database = settings.TIMESTREAM_DATABASE
         self.table = settings.TIMESTREAM_TABLE
-        self.ticker = ticker
+        self.tickers = self.drop_redundant_tickers(tickers)
         self.interval = interval
         self.time_period = self.time_periods_for_each_interval[interval]
 
-    def get_close_values(self) -> dict:
-        """
-        time_period: time period you want candle records are in. str -> 6h
-        interval: candle interval. str -> 5m
-        measure: which MeasureValue you want. str -> close
-        return dict -> last_prices = {"BTC": {"close": []}, {"time": [16213221,16876876]}, "ETH": {"close": []}, {"time": []}}
-        """
+    def drop_redundant_tickers(self, tickers: list) -> list:
+        dropped = set(tickers) - set(self.columns_to_drop)
+        return [*dropped]
 
-        cls = self.__class__
+    def get_close_values(self) -> pd.DataFrame:
+
+        tickers_str = "'" + "', '".join(self.tickers) + "'"
 
         try:
-            response = cls.query_client.query(
-                QueryString=f"""
-                SELECT ticker, interval, measure_name, measure_value::double, time 
+            df = wr.timestream.query(
+                f"""
+                SELECT ticker, measure_value::double, time 
                 FROM "{self.database}"."{self.table}" 
-                WHERE ticker='{self.ticker}' 
+                WHERE ticker IN ({tickers_str}) 
                 AND interval='{self.interval}' 
                 AND time >= ago({self.time_period}) 
                 AND measure_name='close'
@@ -52,40 +48,29 @@ class Closes:
             raise
         except Exception as e:
             print(e)
-        return self.serialize_into_array(response)
+
+        return df
 
     @staticmethod
-    def serialize_into_array(response) -> dict:
-        """
-        params array of dicts: [{'Data': [{'ScalarValue': 'BTC_USDT'}, {'ScalarValue': 'low'}, {'ScalarValue': '56312.91'}, {'ScalarValue': '2021-03-13 00:30:00.000000000'}]}, {'Data': [{'ScalarValue': 'ETH'}, {'ScalarValue': 'open'}, {'ScalarValue': '1739.47'}, {'ScalarValue': '2021-03-13 00:30:00.000000000'}]}]
-        returns: dict of arrays:
-        """
+    def split(df) -> List[pd.DataFrame]:
+        tickers = df.ticker.unique()
+        list_of_dataframes = []
+        for ticker in tickers:
+            reformated_df = (
+                df[df.ticker == ticker]
+                .set_index("time")
+                .drop(columns=["ticker"], errors="ignore")
+                .rename(columns={"measure_value::double": ticker})
+            )
+            list_of_dataframes.append(reformated_df)
+        return list_of_dataframes
 
-        closes, timestamps = [], []
+    @staticmethod
+    def concat(dataframes: List[pd.DataFrame]) -> pd.DataFrame:
+        return pd.concat(dataframes, axis=1)
 
-        for row in response["Rows"]:
-            ticker = row["Data"][0]["ScalarValue"]
-            interval = row["Data"][1]["ScalarValue"]
-            close_value = float(row["Data"][3]["ScalarValue"])
-            closes.append(close_value)
-            timestamp = row["Data"][4]["ScalarValue"].split(".")[0]
-            timestamps.append(timestamp)
-
-        return {
-            "ticker": ticker,
-            "interval": interval,
-            "closes": closes,
-            "timestamps": timestamps,
-        }
-
-    def convert_to_dataframe(self):
-        prepared_coin_close_values = self.get_close_values()
-        closes_float = pd.to_numeric(
-            pd.Series(
-                prepared_coin_close_values["closes"],
-                index=prepared_coin_close_values["timestamps"],
-            ),
-            downcast="float",
-        )
-        d = {prepared_coin_close_values["ticker"]: closes_float}
-        return pd.DataFrame(d)
+    def build(self):
+        closes = self.get_close_values()
+        splited_df = self.split(closes)
+        concatted_df = self.concat(splited_df)
+        return concatted_df

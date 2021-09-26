@@ -13,7 +13,7 @@ from botocore.exceptions import ClientError
 import pandas as pd
 
 from helpers import timeit
-from timestream import Closes
+from timestream import ClosesDataFrame
 
 logger = logging.getLogger(__name__)
 
@@ -79,30 +79,16 @@ class Correlations:
         self.tickers = tickers
         self.interval = interval
         self.metric = metric
-        self.columns_to_drop = ["BUSDT_USDT", "USDC_USDT", "DAI_USDT"]
-        self.table = self._build()
+        self.table = self.get_closes_df()
         self.row_number = self.table.shape[0]
         self.column_number = self.table.shape[1]
         self.headers = list(self.table.columns)
 
-    def _get_all_items(self):
-        items_as_df = []
-        for index, ticker in enumerate(self.tickers):
-            item = Closes(ticker, self.interval)
-            items_as_df.append(item.convert_to_dataframe())
-            # if index == 7:
-            #     break
-
-        return items_as_df
-
     @timeit
-    def _build(self):
-        dataframes = self._get_all_items()
-        result_dataframe = pd.concat(dataframes, axis=1)
-        result_dataframe.drop(
-            self.columns_to_drop, axis=1, inplace=True, errors="ignore"
-        )
-        return result_dataframe
+    def get_closes_df(self):
+        closes = ClosesDataFrame(self.tickers, self.interval)
+        closes_df = closes.build()
+        return closes_df
 
     def _calculate_correlation(self, master_ticker, slave_ticker) -> dict:
         temp_dataframe = self.table[[master_ticker, slave_ticker]]
@@ -186,12 +172,13 @@ def calculate_correlations_for_all_intervals_for_all_metrics(
     for metric in metrics:
         for interval in intervals:
             tickers = summary.filter_tickers(interval, metric)
-            df = DataFrameTable(tickers, interval, metric)
+            df = Correlations(tickers, interval, metric)
             correlations = df.calculate_correlations()
             result.append(correlations)
     flattened_result = [item for items in result for item in items]
     if convert_to_str:
         return df.convert_string(flattened_result)
+
     return flattened_result
 
 
