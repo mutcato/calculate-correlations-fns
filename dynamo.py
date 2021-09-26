@@ -3,6 +3,7 @@ import logging
 from decimal import Decimal
 from datetime import date, datetime, timedelta
 from time import time
+from typing import List
 
 import boto3
 from botocore.config import Config
@@ -97,7 +98,7 @@ class DataFrameTable:
         return correlation
 
     @timeit
-    def calculate_correlations(self) -> list:
+    def calculate_correlations(self) -> List[dict]:
         tickers = self.headers
         correlations = []
         i = 0
@@ -112,12 +113,15 @@ class DataFrameTable:
 
     @staticmethod
     def convert_string(correlations):
+        """
+        Converts DynamoDB json export format into string format
+        """
         concatenated_correlations = "\n".join(
             [str(correlation) for correlation in correlations]
         )
         return concatenated_correlations
 
-
+@timeit
 def write_into_s3(correlations, file_format: str = "dynamodb_export"):
     s3 = boto3.resource("s3")
     s3object = s3.Object("correlations-batch-data", f"correlations.json")
