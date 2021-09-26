@@ -144,14 +144,19 @@ class Summary(Table):
         items = result["Items"]
         return items
 
-    def filter_tickers(self, interval, metric):
+    def filter_tickers(self, interval, metric) -> List[dict]:
+        # Sorts list according to 'volume_in_usdt' field in decreasing order
+        sorted_items = sorted(self.all_items, key = lambda item: item["volume_in_usdt"], reverse=True)
+
         filtered_tickers = [
             item["ticker"]
-            for item in self.all_items
+            for item in sorted_items
             if item["interval_metric"] == f"{interval}_{metric}"
         ]
 
-        return filtered_tickers
+
+        # Return only high volume coins/tokens
+        return filtered_tickers[:200]
 
     def get_unique_intervals(self):
         """
