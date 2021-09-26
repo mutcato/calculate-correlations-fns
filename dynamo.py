@@ -28,8 +28,48 @@ class Table:
 
         self.table = self.dynamodb.Table(self.table_name)
 
+class Summary(Table):
+    def __init__(self):
+        Table.__init__(self, "metrics_summary")
+        self.all_items = self.get_all_items()
 
-class DataFrameTable:
+    def get_all_items(self):
+        result = self.table.scan()
+        items = result["Items"]
+        return items
+
+    @timeit
+    def filter_tickers(self, interval, metric) -> List[dict]:
+        # Sorts list according to 'volume_in_usdt' field in decreasing order
+        sorted_items = sorted(self.all_items, key = lambda item: item["volume_in_usdt"], reverse=True)
+
+        filtered_tickers = [
+            item["ticker"]
+            for item in sorted_items
+            if item["interval_metric"] == f"{interval}_{metric}"
+        ]
+
+
+        # Return only high volume coins/tokens
+        return filtered_tickers[:200]
+
+    def get_unique_intervals(self):
+        """
+        This is only '5m' for now. Other metrics can be added later
+        For example: 15m, 1h, 4h, 8h, 1d, 3d,
+        """
+        return ["5m"]
+
+    @staticmethod
+    def get_unique_metrics():
+        """
+        This is only 'close' for now. Other metrics can be added later
+        For example: open, high, low, volume, number of trades
+        """
+        return ["close"]
+
+
+class Correlations:
     def __init__(
         self,
         tickers: list = ["BTC_USDT", "ETH_USDT"],
@@ -132,46 +172,6 @@ def write_into_s3(correlations, file_format: str = "dynamodb_export"):
         data = correlations
 
     s3object.put(Body=(bytes(data, "utf-8")))
-
-
-class Summary(Table):
-    def __init__(self):
-        Table.__init__(self, "metrics_summary")
-        self.all_items = self.get_all_items()
-
-    def get_all_items(self):
-        result = self.table.scan()
-        items = result["Items"]
-        return items
-
-    def filter_tickers(self, interval, metric) -> List[dict]:
-        # Sorts list according to 'volume_in_usdt' field in decreasing order
-        sorted_items = sorted(self.all_items, key = lambda item: item["volume_in_usdt"], reverse=True)
-
-        filtered_tickers = [
-            item["ticker"]
-            for item in sorted_items
-            if item["interval_metric"] == f"{interval}_{metric}"
-        ]
-
-
-        # Return only high volume coins/tokens
-        return filtered_tickers[:200]
-
-    def get_unique_intervals(self):
-        """
-        This is only '5m' for now. Other metrics can be added later
-        For example: 15m, 1h, 4h, 8h, 1d, 3d,
-        """
-        return ["5m"]
-
-    @staticmethod
-    def get_unique_metrics():
-        """
-        This is only 'close' for now. Other metrics can be added later
-        For example: open, high, low, volume, number of trades
-        """
-        return ["close"]
 
 
 
