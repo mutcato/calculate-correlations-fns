@@ -10,9 +10,9 @@ logger = settings.logging.getLogger()
 
 class ClosesDataFrame:
     time_periods_for_each_interval = {
-        "5m": "30d",
-        "15m": "90d",
-        "1h": "360d",
+        "5m": "15d",
+        "15m": "45d",
+        "1h": "180d",
         "4h": "720d",
         "1d": "1440d",
     }
