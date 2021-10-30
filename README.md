@@ -13,3 +13,5 @@ Create an S3 bucket:
 
 Create a Lambda function with project files:
     make initial-deploy
+
+to ECR deploy click on the "view publish commnands" button on container lists page on ECR console.
