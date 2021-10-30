@@ -102,16 +102,27 @@ class Correlations:
                 "master": master_ticker,
                 "slave": slave_ticker,
                 "pearson_corr": str(
-                    temp_dataframe[master_ticker].corr(temp_dataframe[slave_ticker])
+                    round(
+                        temp_dataframe[master_ticker].corr(
+                            temp_dataframe[slave_ticker]
+                        ),
+                        4
+                    )
                 ),
                 "spearman_corr": str(
-                    temp_dataframe[master_ticker].corr(
-                        temp_dataframe[slave_ticker], method="spearman"
+                    round(
+                        temp_dataframe[master_ticker].corr(
+                            temp_dataframe[slave_ticker], method="spearman"
+                        ),
+                        4
                     )
                 ),
                 "kendall_corr": str(
-                    temp_dataframe[master_ticker].corr(
-                        temp_dataframe[slave_ticker], method="kendall"
+                    round(
+                        temp_dataframe[master_ticker].corr(
+                            temp_dataframe[slave_ticker], method="kendall"
+                        ),
+                        4
                     )
                 ),
                 "TTL": int(time()) + 180 * 24 * 60 * 60,
